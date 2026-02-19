@@ -6,7 +6,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 
-TOKEN = '8499600478:AAGW2Pz1_AQsXK3GT5_fmg3sr0oRLOlbMOA'
+TOKEN = '8499600478:AAG6vtT-pLgAd3LFXvYeMulWyhusgw-JC28'
 WEBSITE_URL = 'https://ramadan-dz1.netlify.app/'
 ADMIN_ID = 7408327565 # الـ ID الخاص بك كمدير
 USERS_FILE = 'users.json'
