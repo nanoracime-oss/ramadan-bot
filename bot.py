@@ -5,7 +5,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 from apscheduler.schedulers.background import BackgroundScheduler
 
 # التوكن الخاص بك من BotFather
-TOKEN = 'ضغ_التوكن_هنا'
+TOKEN = '8499600478:AAGW2Pz1_AQsXK3GT5_fmg3sr0oRLOlbMOA'
 
 # قائمة المستخدمين (تخزين مؤقت)
 users = set()
