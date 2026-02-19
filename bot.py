@@ -6,7 +6,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import threading
 
 # التوكن الخاص بك
-TOKEN = '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' 
+TOKEN = '8499600478:AAGW2Pz1_AQsXK3GT5_fmg3sr0oRLOlbMOA' 
 
 # نظام الحفاظ على استيقاظ السيرفر
 class HealthCheckHandler(BaseHTTPRequestHandler):
