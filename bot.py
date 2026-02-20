@@ -1,30 +1,23 @@
 import os
-import json
 import datetime
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+from pymongo import MongoClient
 
 TOKEN = '8499600478:AAG6vtT-pLgAd3LFXvYeMulWyhusgw-JC28'
 WEBSITE_URL = 'https://ramadan-dz1.netlify.app/'
 ADMIN_ID = 7408327565 
-USERS_FILE = 'users.json'
 
-# --- 1. نظام حفظ المشتركين ---
-def load_users():
-    if os.path.exists(USERS_FILE):
-        with open(USERS_FILE, 'r') as f:
-            return set(json.load(f))
-    return set()
+# --- إعدادات قاعدة البيانات السحابية (MongoDB) ---
+# ⚠️ ضع كلمة المرور الخاصة بك بدلاً من الكلمة العربية أدناه:
+MONGO_URI = 'mongodb+srv://Yacinebranis:ramadan2026@cluster0.9bezeak.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0'
+client = MongoClient(MONGO_URI)
+db = client['ramadan_bot']
+users_collection = db['users']
 
-def save_users(users):
-    with open(USERS_FILE, 'w') as f:
-        json.dump(list(users), f)
-
-users = load_users()
-
-# --- خادم الويب ---
+# --- خادم الويب المصغر ---
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -36,7 +29,7 @@ def run_health_check():
     server = HTTPServer(('0.0.0.0', port), HealthCheckHandler)
     server.serve_forever()
 
-# --- 2. القائمة السفلية (المحدثة بـ 6 أزرار) ---
+# --- القائمة السفلية ---
 def get_main_menu():
     keyboard = [
         [KeyboardButton("☀️ أذكار الصباح"), KeyboardButton("🌙 أذكار المساء")],
@@ -47,14 +40,14 @@ def get_main_menu():
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_chat.id
-    if user_id not in users:
-        users.add(user_id)
-        save_users(users)
+    
+    # حفظ المستخدم في قاعدة البيانات السحابية فوراً
+    users_collection.update_one({'user_id': user_id}, {'$set': {'user_id': user_id}}, upsert=True)
         
     text = "🌙 أهلاً بك في المساعد الرمضاني\n\nتم تفعيل التنبيهات، ويمكنك استخدام القائمة السفلية للوصول السريع للأذكار، النصائح الطبية، والمنصة:"
     await update.message.reply_text(text, reply_markup=get_main_menu())
 
-# --- 3. التفاعل مع الأزرار والميزات الجديدة ---
+# --- التفاعل مع الأزرار ---
 async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     
@@ -67,7 +60,6 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text == "🌐 منصة رمضان":
         await update.message.reply_text(f"🌐 تتبع إنجازك اليومي، خطة الختم، والأذكار من هنا:\n{WEBSITE_URL}")
         
-    # الميزات الجديدة
     elif text == "💊 كبسولة طبية":
         tip = (
             "👨‍⚕️ *الكبسولة الطبية الرمضانية:*\n\n"
@@ -79,7 +71,6 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text == "⏳ متى الإفطار؟":
         tz_algeria = datetime.timezone(datetime.timedelta(hours=1))
         now = datetime.datetime.now(tz_algeria)
-        # تحديد وقت الإفطار التقريبي (الساعة 19:10 كمثال)
         iftar_time = now.replace(hour=19, minute=10, second=0, microsecond=0)
         
         if now > iftar_time:
@@ -90,7 +81,7 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
             minutes, _ = divmod(remainder, 60)
             await update.message.reply_text(f"⏳ باقي على أذان المغرب تقريباً:\n*{hours} ساعات و {minutes} دقيقة* 🌙", parse_mode='Markdown')
 
-# --- ميزة الإذاعة (للمدير) ---
+# --- ميزة الإرسال الجماعي ---
 async def send_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         return 
@@ -101,29 +92,35 @@ async def send_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     message = " ".join(context.args)
     count = 0
+    
+    # جلب المشتركين من قاعدة البيانات السحابية
+    users = users_collection.find()
     for u in users:
         try:
-            await context.bot.send_message(chat_id=u, text=f"📢 تذكير رمضاني:\n\n{message}")
+            await context.bot.send_message(chat_id=u['user_id'], text=f"📢 تذكير رمضاني:\n\n{message}")
             count += 1
         except: pass
     
     await update.message.reply_text(f"✅ تم إرسال رسالتك بنجاح إلى {count} مشترك.")
 
-# --- 4. التنبيهات التلقائية المجدولة ---
+# --- التنبيهات المجدولة ---
 async def morning_reminder(context: ContextTypes.DEFAULT_TYPE):
+    users = users_collection.find()
     for u in users:
-        try: await context.bot.send_message(chat_id=u, text=f"☀️ حان الآن وقت أذكار الصباح.\nابدأ يومك بذكر الله.\n\nاقرأها كاملة من هنا: {WEBSITE_URL}")
+        try: await context.bot.send_message(chat_id=u['user_id'], text=f"☀️ حان الآن وقت أذكار الصباح.\nابدأ يومك بذكر الله.\n\nاقرأها كاملة من هنا: {WEBSITE_URL}")
         except: pass
 
 async def evening_reminder(context: ContextTypes.DEFAULT_TYPE):
+    users = users_collection.find()
     for u in users:
-        try: await context.bot.send_message(chat_id=u, text=f"🌙 حان الآن وقت أذكار المساء.\nختام اليوم بالذكر طمأنينة.\n\nاقرأها كاملة من هنا: {WEBSITE_URL}")
+        try: await context.bot.send_message(chat_id=u['user_id'], text=f"🌙 حان الآن وقت أذكار المساء.\nختام اليوم بالذكر طمأنينة.\n\nاقرأها كاملة من هنا: {WEBSITE_URL}")
         except: pass
 
 async def iftar_dua_reminder(context: ContextTypes.DEFAULT_TYPE):
     dua = "🤲 *دعاء ما قبل الإفطار:*\n\n(اللهم لك صمت، وعلى رزقك أفطرت، ذهب الظمأ وابتلت العروق، وثبت الأجر إن شاء الله).\nلا تنسونا من صالح دعائكم 🌙."
+    users = users_collection.find()
     for u in users:
-        try: await context.bot.send_message(chat_id=u, text=dua, parse_mode='Markdown')
+        try: await context.bot.send_message(chat_id=u['user_id'], text=dua, parse_mode='Markdown')
         except: pass
 
 if __name__ == '__main__':
@@ -132,13 +129,12 @@ if __name__ == '__main__':
     app = ApplicationBuilder().token(TOKEN).build()
     tz_algeria = datetime.timezone(datetime.timedelta(hours=1))
     
-    # الجدولة (توقيت الجزائر)
     app.job_queue.run_daily(morning_reminder, time=datetime.time(hour=7, minute=0, tzinfo=tz_algeria))
     app.job_queue.run_daily(evening_reminder, time=datetime.time(hour=17, minute=0, tzinfo=tz_algeria))
-    app.job_queue.run_daily(iftar_dua_reminder, time=datetime.time(hour=18, minute=45, tzinfo=tz_algeria)) # قبل الإفطار
+    app.job_queue.run_daily(iftar_dua_reminder, time=datetime.time(hour=18, minute=45, tzinfo=tz_algeria))
     
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("send_all", send_all))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_buttons))
     
-    app.run_polling()
+    app.run_polling() 
